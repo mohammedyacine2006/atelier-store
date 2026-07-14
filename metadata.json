@@ -1,0 +1,6 @@
+{
+  "name": "Quiet Luxury E-Commerce Store",
+  "description": "An interactive, editorial-style full-stack e-commerce experience designed with quiet luxury aesthetics, complete with product categories bento grid, catalog sorting/filtering, interactive product details page, shopping cart, and mock checkout system.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
