@@ -104,7 +104,11 @@ export default function App() {
       window.history.replaceState({}, document.title, window.location.pathname);
 
       // Fetch checkout details from local Express server
-      fetch(`http://localhost:4242/checkout-session/${sessionId}`)
+      const sessionUrl = import.meta.env.PROD
+        ? `/api/checkout-session/${sessionId}`
+        : `http://localhost:4242/checkout-session/${sessionId}`;
+
+      fetch(sessionUrl)
         .then((res) => {
           if (!res.ok) throw new Error('Failed to retrieve checkout details.');
           return res.json();

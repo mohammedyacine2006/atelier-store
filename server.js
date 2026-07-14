@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import Stripe from 'stripe';
 import { createClient } from '@sanity/client';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
 
@@ -28,7 +29,7 @@ app.use(cors({
 }));
 
 // Stripe Webhook Endpoint (Must be defined BEFORE express.json() for raw body access)
-app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+app.post(['/webhook', '/api/webhook'], express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature'];
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
@@ -93,7 +94,7 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
 app.use(express.json());
 
 // Endpoint to create a checkout session
-app.post('/create-checkout-session', async (req, res) => {
+app.post(['/create-checkout-session', '/api/create-checkout-session'], async (req, res) => {
   try {
     const { cart } = req.body;
 
@@ -138,8 +139,8 @@ app.post('/create-checkout-session', async (req, res) => {
       shipping_address_collection: {
         allowed_countries: ['US', 'CA', 'GB', 'AU', 'FR', 'DE', 'IT', 'ES', 'NL', 'SE'],
       },
-      success_url: `http://localhost:3000/?page=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `http://localhost:3000/?page=cart`,
+      success_url: `${req.get('origin') || (req.get('referer') ? new URL(req.get('referer')).origin : 'http://localhost:3000')}/?page=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${req.get('origin') || (req.get('referer') ? new URL(req.get('referer')).origin : 'http://localhost:3000')}/?page=cart`,
     });
 
     res.json({ url: session.url });
@@ -150,7 +151,7 @@ app.post('/create-checkout-session', async (req, res) => {
 });
 
 // Endpoint to retrieve session details for success page presentation
-app.get('/checkout-session/:sessionId', async (req, res) => {
+app.get(['/checkout-session/:sessionId', '/api/checkout-session/:sessionId'], async (req, res) => {
   try {
     const { sessionId } = req.params;
     const session = await stripe.checkout.sessions.retrieve(sessionId);
@@ -186,6 +187,16 @@ app.get('/checkout-session/:sessionId', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Express server running on http://localhost:${PORT}`);
-});
+// Conditionally run app.listen() only for local development
+const isMain = process.argv[1] && (
+  fileURLToPath(import.meta.url) === process.argv[1] ||
+  process.argv[1].endsWith('server.js')
+);
+
+if (isMain && !process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`Express server running on http://localhost:${PORT}`);
+  });
+}
+
+export default app;

@@ -32,7 +32,11 @@ export default function CartPage({
       // Store current cart items locally so we can restore exact custom options (images/color/size) on the success page
       localStorage.setItem('atelier_pending_order_items', JSON.stringify(cart));
 
-      const response = await fetch('http://localhost:4242/create-checkout-session', {
+      const checkoutUrl = import.meta.env.PROD
+        ? '/api/create-checkout-session'
+        : 'http://localhost:4242/create-checkout-session';
+
+      const response = await fetch(checkoutUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
