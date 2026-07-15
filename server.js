@@ -29,66 +29,65 @@ app.use(cors({
 }));
 
 // Stripe Webhook Endpoint (Must be defined BEFORE express.json() for raw body access)
-app.post(['/webhook', '/api/webhook'], express.raw({ type: 'application/json' }), async (req, res) => {
+app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature'];
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-
-  if (!sig || !webhookSecret) {
-    console.warn('Stripe signature or webhook secret is missing. Skipping webhook processing.');
-    return res.status(400).send('Webhook Error: Signature or secret missing');
-  }
 
   let event;
 
   try {
-    event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
     console.error(`Webhook signature verification failed: ${err.message}`);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // Handle the checkout.session.completed event
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object;
+  // Handle the event
+  switch (event.type) {
+    case 'checkout.session.completed':
+      const session = event.data.object;
 
-    try {
-      // Retrieve line items with expanded product details to read metadata
-      const lineItems = await stripe.checkout.sessions.listLineItems(session.id, {
-        expand: ['data.price.product'],
-      });
+      try {
+        // Retrieve line items with expanded product details to read metadata
+        const lineItems = await stripe.checkout.sessions.listLineItems(session.id, {
+          expand: ['data.price.product'],
+        });
 
-      console.log(`[Webhook] Processing completed session ${session.id} with ${lineItems.data.length} items.`);
+        console.log(`[Webhook] Processing completed session ${session.id} with ${lineItems.data.length} items.`);
 
-      for (const item of lineItems.data) {
-        const product = item.price?.product;
-        if (product && typeof product === 'object') {
-          const productId = product.metadata?.productId;
-          const quantityPurchased = parseInt(product.metadata?.quantity || item.quantity.toString(), 10);
+        for (const item of lineItems.data) {
+          const product = item.price?.product;
+          if (product && typeof product === 'object') {
+            const productId = product.metadata?.productId;
+            const quantityPurchased = parseInt(product.metadata?.quantity || item.quantity.toString(), 10);
 
-          if (productId && !isNaN(quantityPurchased)) {
-            console.log(`[Webhook] Decrementing stock for Sanity product ${productId} by ${quantityPurchased} units.`);
-            
-            // Dec stock level in Sanity Studio
-            await sanityClient
-              .patch(productId)
-              .dec({ stock: quantityPurchased })
-              .commit();
-            
-            console.log(`[Webhook] Successfully updated stock for product ${productId}.`);
+            if (productId && !isNaN(quantityPurchased)) {
+              console.log(`[Webhook] Decrementing stock for Sanity product ${productId} by ${quantityPurchased} units.`);
+              
+              // Dec stock level in Sanity Studio
+              await sanityClient
+                .patch(productId)
+                .dec({ stock: quantityPurchased })
+                .commit();
+              
+              console.log(`[Webhook] Successfully updated stock for product ${productId}.`);
+            } else {
+              console.warn('[Webhook] Product ID or valid quantity not found in line item metadata.', product.metadata);
+            }
           } else {
-            console.warn('[Webhook] Product ID or valid quantity not found in line item metadata.', product.metadata);
+            console.warn('[Webhook] Product object not expanded or is invalid in line item.', item.price);
           }
-        } else {
-          console.warn('[Webhook] Product object not expanded or is invalid in line item.', item.price);
         }
+      } catch (error) {
+        console.error(`[Webhook] Error decrementing stock for session ${session.id}:`, error);
+        // We still return 200 to Stripe to avoid retrying already processed sessions if Sanity is down
       }
-    } catch (error) {
-      console.error(`[Webhook] Error decrementing stock for session ${session.id}:`, error);
-      // We still return 200 to Stripe to avoid retrying already processed sessions if Sanity is down
-    }
+      break;
+
+    default:
+      console.log(`Unhandled event type ${event.type}`);
   }
 
-  res.json({ received: true });
+  res.status(200).json({ received: true });
 });
 
 app.use(express.json());
