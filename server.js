@@ -29,7 +29,7 @@ app.use(cors({
 }));
 
 // Stripe Webhook Endpoint (Must be defined BEFORE express.json() for raw body access)
-app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+app.post(['/webhook', '/api/webhook'], express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature'];
 
   let event;
@@ -62,13 +62,13 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
 
             if (productId && !isNaN(quantityPurchased)) {
               console.log(`[Webhook] Decrementing stock for Sanity product ${productId} by ${quantityPurchased} units.`);
-              
+
               // Dec stock level in Sanity Studio
               await sanityClient
                 .patch(productId)
                 .dec({ stock: quantityPurchased })
                 .commit();
-              
+
               console.log(`[Webhook] Successfully updated stock for product ${productId}.`);
             } else {
               console.warn('[Webhook] Product ID or valid quantity not found in line item metadata.', product.metadata);
